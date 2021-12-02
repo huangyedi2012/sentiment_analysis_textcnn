@@ -11,6 +11,7 @@ import data_input_helper as data_helpers
 from text_cnn import TextCNN
 # Data loading params
 from textcnn import tokenization
+from textcnn.metrics import get_binary_metrics
 
 tf.flags.DEFINE_string("train_data_file", "../data/train.csv", "Data source for the positive data.")
 tf.flags.DEFINE_string("test_data_file", "../data/test.csv", "Data source for the positive data.")
@@ -56,7 +57,7 @@ def load_data(filepath):
 
     tokens = [pad_sequence(tokenizer.tokenize(text), seq_len) for text in texts]
     x = [tokenizer.convert_tokens_to_ids(token) for token in tokens]
-    y = [label_one_hot[label] for label in labels]
+    y = [int(label) for label in labels]
     return x, y, seq_len
 
 
@@ -85,34 +86,10 @@ def train():
             grads_and_vars = optimizer.compute_gradients(cnn.loss)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
-            # Keep track of gradient values and sparsity (optional)
-            grad_summaries = []
-            for g, v in grads_and_vars:
-                if g is not None:
-                    grad_hist_summary = tf.summary.histogram("{}/grad/hist".format(v.name), g)
-                    sparsity_summary = tf.summary.scalar("{}/grad/sparsity".format(v.name), tf.nn.zero_fraction(g))
-                    grad_summaries.append(grad_hist_summary)
-                    grad_summaries.append(sparsity_summary)
-            grad_summaries_merged = tf.summary.merge(grad_summaries)
-
             # Output directory for models and summaries
             timestamp = str(int(time.time()))
             out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
             print("Writing to {}\n".format(out_dir))
-
-            # Summaries for loss and accuracy
-            loss_summary = tf.summary.scalar("loss", cnn.loss)
-            acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
-
-            # Train Summaries
-            train_summary_op = tf.summary.merge([loss_summary, acc_summary, grad_summaries_merged])
-            train_summary_dir = os.path.join(out_dir, "summaries", "train")
-            train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
-
-            # Dev summaries
-            dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
-            dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
-            dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
 
             # Checkpoint directory. Tensorflow assumes this directory already exists so we need to create it
             checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
@@ -120,9 +97,6 @@ def train():
             if not os.path.exists(checkpoint_dir):
                 os.makedirs(checkpoint_dir)
             saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
-
-            # Write vocabulary
-            # vocab_processor.save(os.path.join(out_dir, "vocab"))
 
             # Initialize all variables
             sess.run(tf.global_variables_initializer())
@@ -139,14 +113,13 @@ def train():
                 # _, step, summaries, loss, accuracy,(w,idx) = sess.run(
                 #     [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy,cnn.get_w2v_W()],
                 #     feed_dict)
-                _, step, summaries, loss, accuracy = sess.run(
-                    [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+                _, step, loss, predictions = sess.run(
+                    [train_op, global_step, cnn.loss, cnn.predictions],
                     feed_dict)
 
                 time_str = datetime.datetime.now().isoformat()
-                print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
-                # print w[:2],idx[:2]
-                train_summary_writer.add_summary(summaries, step)
+                acc, precision, recall, f_beta = get_binary_metrics(pred_y=predictions, true_y=y_batch)
+                print("{}: step {}, loss {:g}, acc {:g}, recall:{:g}".format(time_str, step, loss, acc, precision, recall))
 
             def dev_step(x_batch, y_batch, writer=None):
                 """
@@ -157,13 +130,11 @@ def train():
                     cnn.input_y: y_batch,
                     cnn.dropout_keep_prob: 1.0
                 }
-                step, summaries, loss, accuracy = sess.run(
-                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                step, loss, predictions = sess.run(
+                    [global_step, cnn.loss, cnn.predictions],
                     feed_dict)
-                time_str = datetime.datetime.now().isoformat()
-                print("test evaluations: loss {:g}, acc {:g}".format(loss, accuracy))
-                if writer:
-                    writer.add_summary(summaries, step)
+                acc, precision, recall, f_beta = get_binary_metrics(pred_y=predictions, true_y=y_batch)
+                print("test evaluations: loss {:g}, acc {:g}, recall:{:g}".format(loss, acc, precision, recall))
 
             # Generate batches
             batches = data_helpers.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
@@ -173,7 +144,7 @@ def train():
                 batches_dev = data_helpers.batch_iter(list(zip(x_test, y_test)), len(x_test), 1)
                 for batch_dev in batches_dev:
                     x_batch_dev, y_batch_dev = zip(*batch_dev)
-                    dev_step(x_batch_dev, y_batch_dev, writer=dev_summary_writer)
+                    dev_step(x_batch_dev, y_batch_dev)
 
             # Training loop. For each batch...
             for batch in batches:

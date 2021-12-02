@@ -18,7 +18,8 @@ class TextCNN(object):
 
         # Placeholders for input, output and dropout
         self.input_x = tf.placeholder(tf.int32, [None, seq_len], name="input_x")
-        self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
+        self.input_y = tf.placeholder(tf.int32, [None], name="input_y")
+        self.input_y_one_hot = tf.one_hot(self.input_y, depth=num_classes, name='input_y_one_hot')
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
         # Keeping track of l2 regularization loss (optional)
@@ -77,10 +78,5 @@ class TextCNN(object):
 
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss"):
-            losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.scores, labels=self.input_y)
+            losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.scores, labels=self.input_y_one_hot)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
-
-        # Accuracy
-        with tf.name_scope("accuracy"):
-            correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
