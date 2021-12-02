@@ -54,10 +54,9 @@ def load_data(filepath):
         seq_len = max([len(x) for x in texts])
     print('len(x) = ', len(texts))
     print('max_document_length = ', seq_len)
-
     tokens = [pad_sequence(tokenizer.tokenize(text), seq_len) for text in texts]
     x = [tokenizer.convert_tokens_to_ids(token) for token in tokens]
-    y = [int(label) for label in labels]
+    y = [label2id[label] for label in labels]
     return x, y, seq_len
 
 
@@ -119,9 +118,9 @@ def train():
 
                 time_str = datetime.datetime.now().isoformat()
                 acc, precision, recall, f_beta = get_binary_metrics(pred_y=predictions, true_y=y_batch)
-                print("{}: step {}, loss {:g}, precision {:g}, recall:{:g}".format(time_str, step, loss, acc, precision, recall))
+                print("{}: step {}, loss {:g}, acc {:g}, precision {:g}, recall:{:g}".format(time_str, step, loss, acc, precision, recall))
 
-            def dev_step(x_batch, y_batch, writer=None):
+            def dev_step(x_batch, y_batch):
                 """
                 Evaluates model on a dev set
                 """
@@ -134,13 +133,12 @@ def train():
                     [global_step, cnn.loss, cnn.predictions],
                     feed_dict)
                 acc, precision, recall, f_beta = get_binary_metrics(pred_y=predictions, true_y=y_batch)
-                print("test evaluations: loss {:g}, precision {:g}, recall:{:g}".format(loss, acc, precision, recall))
+                print("Evaluation: loss {:g}, acc {:g}, precision {:g}, recall:{:g}".format(loss, acc, precision, recall))
 
             # Generate batches
             batches = data_helpers.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
 
             def dev_test():
-                # batches_dev = data_helpers.batch_iter(list(zip(x_test, y_test)), FLAGS.batch_size, 1)
                 batches_dev = data_helpers.batch_iter(list(zip(x_test, y_test)), len(x_test), 1)
                 for batch_dev in batches_dev:
                     x_batch_dev, y_batch_dev = zip(*batch_dev)
@@ -168,16 +166,11 @@ def read_class_label(class_file):
             labels.append(label.strip())
     id2label = {idx: label for idx, label in enumerate(labels)}
     label2id = {label: idx for idx, label in enumerate(labels)}
-    label_one_hot = {k: [0] * len(labels) for k in labels}
-    for label in label_one_hot:
-        one_hot = label_one_hot[label]
-        one_hot[label2id[label]] = 1
-        label_one_hot[label] = one_hot
-    return labels, id2label, label2id, label_one_hot
+    return labels, id2label, label2id
 
 
 if __name__ == "__main__":
     vocab, word2vec, dims = data_helpers.load_word_vector(FLAGS.w2v_file)
-    labels, id2label, label2id, label_one_hot = read_class_label(FLAGS.class_file)
+    labels, id2label, label2id = read_class_label(FLAGS.class_file)
     tokenizer = tokenization.FullTokenizer(vocab)
     train()
