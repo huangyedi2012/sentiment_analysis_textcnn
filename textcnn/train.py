@@ -119,7 +119,7 @@ def train():
 
                 time_str = datetime.datetime.now().isoformat()
                 acc, precision, recall, f_beta = get_binary_metrics(pred_y=predictions, true_y=y_batch)
-                print("{}: step {}, loss {:g}, acc {:g}, recall:{:g}".format(time_str, step, loss, acc, precision, recall))
+                print("{}: step {}, loss {:g}, precision {:g}, recall:{:g}".format(time_str, step, loss, acc, precision, recall))
 
             def dev_step(x_batch, y_batch, writer=None):
                 """
@@ -134,7 +134,7 @@ def train():
                     [global_step, cnn.loss, cnn.predictions],
                     feed_dict)
                 acc, precision, recall, f_beta = get_binary_metrics(pred_y=predictions, true_y=y_batch)
-                print("test evaluations: loss {:g}, acc {:g}, recall:{:g}".format(loss, acc, precision, recall))
+                print("test evaluations: loss {:g}, precision {:g}, recall:{:g}".format(loss, acc, precision, recall))
 
             # Generate batches
             batches = data_helpers.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
